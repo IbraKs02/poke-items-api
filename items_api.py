@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 CORS(app)  # Autorise toutes les origines
 
-# Paramètres de connexion à la même base PostgreSQL sur Render
+# Paramètres de connexion à PostgreSQL sur Render
 DB_HOST     = "dpg-cvq353bipnbc73cil1og-a.frankfurt-postgres.render.com"
 DB_NAME     = "pokefeuille_sql_base"
 DB_USER     = "pokefeuille_sql_base_user"
@@ -23,7 +23,6 @@ def connect_db():
 
 @app.route('/health', methods=['GET'])
 def health():
-    # Permet au keep-alive et au monitoring de vérifier que le service est up
     return "OK", 200
 
 @app.route('/api/items_scelles', methods=['GET'])
@@ -31,32 +30,33 @@ def get_items_scelles():
     conn = connect_db()
     cur  = conn.cursor()
 
-    # Sélectionnez ici tous les champs de votre table items_scelles
+    # INNER JOIN entre items_scelles et jcc_extensions sur id_extension
     cur.execute("""
         SELECT
-          id_items,
-          serie_en,
-          extension_en,
-          serie_fr,
-          extension_fr,
-          id_extension,
-          categorie,
-          item_nom_fr,
-          item_nom_en,
-          prix,
-          image_url
-        FROM items_scelles
-        ORDER BY id_items;
+          i.*,                        -- tous les champs de items_scelles
+          j.identifiant_edition,
+          j.nom_edition_en,
+          j.nom_edition_fr,
+          j.url_edition,
+          j.identifiant_extension,
+          j.nom_extension_en,
+          j.nom_extension_fr,
+          j.url_extension
+        FROM items_scelles AS i
+        INNER JOIN jcc_extensions AS j
+          ON TRIM(i.id_extension) = TRIM(j.identifiant_extension)
+        ORDER BY i.id_items;
     """)
 
+    # Récupération des noms de colonnes (i.* puis j.*)
     cols = [desc[0] for desc in cur.description]
-    data = [dict(zip(cols, row)) for row in cur.fetchall()]
+    rows = cur.fetchall()
+    data = [dict(zip(cols, row)) for row in rows]
 
     cur.close()
     conn.close()
     return jsonify(data)
 
 if __name__ == "__main__":
-    # Écoute sur 0.0.0.0 et port configuré par Render ou 5001 pour différencier
-    port = int(os.environ.get("PORT", 5001))
-    app.run(host="0.0.0.0", port=port)
+    # Écoute sur 0.0.0.0 et port défini (Render injecte PORT)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
